@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Detektor Alat Tes - Mobile</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            background-color: #1a1a1a; /* Gelap agar kamera lebih kontras */
+            color: white;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 5px; color: #4ade80; }
+        .instruction { font-size: 0.9rem; color: #a3a3a3; margin-bottom: 20px; text-align: center; }
+        
+        #webcam-container { 
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 1 / 1;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 4px solid #333;
+            background: #000;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        canvas { width: 100% !important; height: auto !important; }
+
+        #label-container { 
+            margin-top: 25px; 
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+            background: #262626;
+            border-radius: 15px;
+            font-size: 20px; 
+            font-weight: bold; 
+            text-align: center;
+            color: #4ade80;
+            box-sizing: border-box;
+            border-bottom: 4px solid #4ade80;
+        }
+
+        #btn-start {
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: #4ade80;
+            color: #1a1a1a;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(74, 222, 128, 0.3);
+            margin-bottom: 20px;
+        }
+        #btn-start:active { transform: scale(0.95); }
+        .loading-text { color: #facc15; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <h1>AI Scanner Alat Tes</h1>
+    <p class="instruction">Arahkan kamera belakang ke objek</p>
+    
+    <button type="button" id="btn-start" onclick="init()">AKTIFKAN KAMERA</button>
+
+    <div id="webcam-container"></div>
+    <div id="label-container">Kamera Siap</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+    <script type="text/javascript">
+        // Lokasi file model di GitHub (folder yang sama)
+        const URL = "./"; 
+
+        let model, webcam, labelContainer, maxPredictions;
+
+        async function init() {
+            const startBtn = document.getElementById("btn-start");
+            startBtn.innerHTML = "Memuat AI...";
+            startBtn.disabled = true;
+            
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            try {
+                // 1. Load Model
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+
+                // 2. Setup Webcam khusus HP (Kamera Belakang)
+                const flip = false; // Kamera belakang tidak perlu di-mirror
+                const width = 400;
+                const height = 400;
+                webcam = new tmImage.Webcam(width, height, flip); 
+                
+                // "environment" memanggil kamera belakang di HP
+                await webcam.setup({ facingMode: "environment" }); 
+                
+                await webcam.play();
+                window.requestAnimationFrame(loop);
+
+                // 3. Tampilkan di UI
+                startBtn.style.display = "none"; // Sembunyikan tombol setelah mulai
+                document.getElementById("webcam-container").appendChild(webcam.canvas);
+                labelContainer = document.getElementById("label-container");
+            } catch (e) {
+                alert("Gagal akses kamera. Pastikan menggunakan HTTPS atau cek izin browser.");
+                console.error(e);
+                startBtn.innerHTML = "COBA LAGI";
+                startBtn.disabled = false;
+            }
+        }
+
+        async function loop() {
+            webcam.update(); 
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        async function predict() {
+            const prediction = await model.predict(webcam.canvas);
+            
+            let highestProb = 0;
+            let bestPrediction = "";
+
+            for (let i = 0; i < maxPredictions; i++) {
+                if(prediction[i].probability > highestProb) {
+                    highestProb = prediction[i].probability;
+                    bestPrediction = prediction[i].className;
+                }
+            }
+            
+            const percentage = (highestProb * 100).toFixed(0);
+            
+            // Tampilan berbeda jika HP/Botol tidak terdeteksi (kelas Background)
+            if (bestPrediction.toLowerCase() === "background" || highestProb < 0.5) {
+                labelContainer.innerHTML = "<span style='color:#a3a3a3'>Mencari Objek...</span>";
+            } else {
+                labelContainer.innerHTML = `${bestPrediction} <br> <span style='font-size:14px'>Keyakinan: ${percentage}%</span>`;
+            }
+        }
+    </script>
+</body>
+</html>
